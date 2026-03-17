@@ -1,0 +1,38 @@
+# src/main/resources/application.yml
+spring:
+  application:
+    name: rocket-music-api
+  
+  # Configurações do seu PostgreSQL Local (Modifique com sua senha)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/rocketmusic
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  # O Flyway assume a criação do banco com scripts profissionais. 
+  # O Hibernate agora apenas valida a estrutura.
+  jpa:
+    hibernate:
+      ddl-auto: validate 
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # Chaves de desenvolvimento (Substitua pelas chaves reais do Painel do Spotify)
+  security:
+    oauth2:
+      client:
+        registration:
+          spotify:
+            client-id: "seu-client-id-local-do-spotify"
+            client-secret: "seu-client-secret-local-do-spotify"
+            scope: user-read-recently-played,user-top-read
+            
+rocketmusic:
+  frontend:
+    url: http://localhost:5173
+  ai:
+    gemini:
+      api-key: "sua-chave-local-gemini"
