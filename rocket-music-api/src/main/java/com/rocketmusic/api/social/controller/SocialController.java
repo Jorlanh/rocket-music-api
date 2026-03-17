@@ -55,7 +55,7 @@ public class SocialController {
     public List<Map<String, Object>> getFriendActivity(@AuthenticationPrincipal OAuth2User principal) {
         String spotifyId = principal.getName();
 
-        // ASPAS: Esta query é otimizada para buscar scrobbles reais vindos do Worker
+        // query otimizada para buscar scrobbles reais vindos do Worker
         String sql = """
             SELECT 
                 h.id, 
