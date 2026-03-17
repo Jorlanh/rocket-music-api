@@ -2,9 +2,10 @@ package com.rocketmusic.api.worker.service;
 
 import com.rocketmusic.api.core.domain.User;
 import com.rocketmusic.api.core.repository.UserRepository;
-import com.rocketmusic.api.worker.integration.SpotifyApiClient;
 import com.rocketmusic.api.worker.dto.ScrobbleRecord;
+import com.rocketmusic.api.worker.integration.SpotifyApiClient;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +18,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ScrobblerEngine {
 
     private final UserRepository userRepository;
@@ -24,33 +26,33 @@ public class ScrobblerEngine {
     private final JdbcTemplate jdbcTemplate;
 
     @Async
-    @Scheduled(fixedDelayString = "${scrobbler.interval.ms:60000}")
+    @Scheduled(fixedDelay = 60000) // Roda a cada 1 minuto
     public void processScrobbles() {
-        List<User> activeUsers = userRepository.findAll(); // Em produção, usar paginação (Pageable)
-        
-        for (User user : activeUsers) {
+        List<User> users = userRepository.findAll();
+
+        for (User user : users) {
+            if (user.getRefreshToken() == null) continue;
+
             try {
-                // 1. Renovar token se necessário
-                String validToken = spotifyClient.refreshUserToken(user.getRefreshToken());
+                String newToken = spotifyClient.refreshUserToken(user.getRefreshToken());
+                user.setAccessToken(newToken);
+                userRepository.save(user);
+
+                List<ScrobbleRecord> recentPlays = spotifyClient.getRecentlyPlayed(newToken);
+                saveScrobblesBatch(user.getId(), recentPlays);
                 
-                // 2. Buscar 'recently played'
-                List<ScrobbleRecord> recentPlays = spotifyClient.getRecentlyPlayed(validToken);
-                
-                // 3. Batch Insert para evitar gargalos no banco
-                if (!recentPlays.isEmpty()) {
-                    saveScrobblesBatch(user.getId(), recentPlays);
-                }
-                
+                log.info("Scrobbles atualizados para o usuário: {}", user.getSpotifyId());
             } catch (Exception e) {
-                // Logar falha de um usuário sem derrubar o loop dos outros
+                log.error("Erro ao processar scrobbles para {}: {}", user.getSpotifyId(), e.getMessage());
             }
         }
     }
 
     private void saveScrobblesBatch(UUID userId, List<ScrobbleRecord> scrobbles) {
-        String sql = "INSERT INTO play_history (id, user_id, track_id, duration_ms, played_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING";
-        
-        jdbcTemplate.batchUpdate(sql, scrobbles, scrobbles.size(),
+        String sql = "INSERT INTO play_history (id, user_id, track_id, duration_ms, played_at) " +
+                     "VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING";
+
+        jdbcTemplate.batchUpdate(sql, scrobbles, 50,
             (PreparedStatement ps, ScrobbleRecord record) -> {
                 ps.setObject(1, UUID.randomUUID());
                 ps.setObject(2, userId);
